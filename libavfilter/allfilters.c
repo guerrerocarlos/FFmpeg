@@ -23,6 +23,7 @@
 #include "avfilter.h"
 #include "config.h"
 
+extern AVFilter ff_vf_transform360;
 extern AVFilter ff_af_abench;
 extern AVFilter ff_af_acompressor;
 extern AVFilter ff_af_acontrast;
