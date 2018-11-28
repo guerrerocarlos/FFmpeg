@@ -54,6 +54,7 @@
 typedef struct FadeContext {
     const AVClass *class;
     int type;
+    int depth;
     int factor, fade_per_frame;
     int start_frame, nb_frames;
     int hsub, vsub, bpp;
@@ -70,14 +71,20 @@ typedef struct FadeContext {
 typedef struct ThreadPayload {
     AVFrame *sphere;
     AVFrame *square;
+    int w;
+    int h;
+    int hsub;
+    int vsub;
+    int cw;
+    int ch;
 };
 
 static av_cold int init(AVFilterContext *ctx)
 {
 
-    av_log(NULL, AV_LOG_INFO, "\n carlos init");
+    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye");
 
-     
+
     FadeContext *s = ctx->priv;
 
     s->fade_per_frame = (1 << 16) / s->nb_frames;
@@ -169,13 +176,17 @@ const static enum AVPixelFormat studio_level_pix_fmts[] = {
 static int config_props(AVFilterLink *inlink)
 {
     // printf('config_props');
-    av_log(NULL, AV_LOG_INFO, "\nconfig_props");
 
     FadeContext *s = inlink->dst->priv;
     const AVPixFmtDescriptor *pixdesc = av_pix_fmt_desc_get(inlink->format);
 
     s->hsub = pixdesc->log2_chroma_w;
     s->vsub = pixdesc->log2_chroma_h;
+
+    s->depth = pixdesc->comp[0].depth;
+    av_log(NULL, AV_LOG_INFO, "\nconfig_props depth: %d", s->depth);
+
+    // s->do_slice = s->depth <= 8 ? vibrance_slice8 : vibrance_slice16;
 
     s->bpp = pixdesc->flags & AV_PIX_FMT_FLAG_PLANAR ?
              1 :
@@ -379,14 +390,13 @@ static int filter_slice_alpha(AVFilterContext *ctx, void *arg, int jobnr,
     return 0;
 }
 
-static void copyPixelsFromFishToRect(AVFrame *fish_frame, AVFrame* rect_frame, int plane, int x, int y) {
-    uint8_t *rect = rect_frame->data[plane] + x * rect_frame->linesize[plane];
+static void copyPixelsFromFishToRect(AVFrame *fish_frame, AVFrame *rect_frame, int x, int y, int layer, float width, float height) {
 
-    float theta,phi,r, r2;
+    float theta, phi, r, r2;
     float FOV =(float)PI/180 * 180;
     float FOV2 = (float)PI/180 * 180;
-    float width = rect_frame->width;
-    float height = rect_frame->height;
+    // float width = rect_frame->width;
+    // float height = rect_frame->height;
 
     // Polar angles
     theta = PI * (x / width - 0.5); // -pi/2 to pi/2
@@ -395,7 +405,7 @@ static void copyPixelsFromFishToRect(AVFrame *fish_frame, AVFrame* rect_frame, i
     // Vector in 3D space
     float psph_x = cos(phi) * sin(theta);
     float psph_y = cos(phi) * cos(theta);
-    float psph_z = sin(phi) ; //* cos(theta);
+    float psph_z = sin(phi) ;//* cos(theta);
 
     // Calculate fisheye angle and radius
     theta = atan2(psph_z,psph_x);
@@ -408,9 +418,23 @@ static void copyPixelsFromFishToRect(AVFrame *fish_frame, AVFrame* rect_frame, i
     int pfish_x = 0.5 * width + r * cos(theta);
     int pfish_y = 0.5 * height + r2 * sin(theta);
 
-    uint8_t *fish = fish_frame->data[plane] + pfish_x * fish_frame->linesize[plane];
+    // uint8_t *rect0 = rect_frame->data[0] + y * rect_frame->linesize[0];
+    // uint8_t *rect1 = rect_frame->data[1] + y * rect_frame->linesize[1];
+    // uint8_t *rect2 = rect_frame->data[2] + y * rect_frame->linesize[2];
 
-    *(rect+y) = *(fish+pfish_y) ; //*(p+j)+100;//*(p+j);
+    // uint8_t *fish0 = fish_frame->data[0] + pfish_y * fish_frame->linesize[0];
+    // uint8_t *fish1 = fish_frame->data[1] + pfish_y * fish_frame->linesize[1];
+    // uint8_t *fish2 = fish_frame->data[2] + pfish_y * fish_frame->linesize[2];
+
+    // *(rect0+x) = *(fish0+pfish_x); 
+    // *(rect1+(int)(x/2)) = *(fish1+(int)(pfish_x/2)) ; 
+    // *(rect2+(int)(x/2)) = *(fish2+(int)(pfish_x/2)) ; 
+
+    int fish_linesize = fish_frame->linesize[layer];
+    int rect_linesize = rect_frame->linesize[layer];
+
+    (rect_frame->data[layer])[x + y * rect_linesize] = (fish_frame->data[layer])[pfish_x + pfish_y * fish_linesize];
+
 }
 
 static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg, 
@@ -418,20 +442,52 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
                               int nb_jobs){
 
     struct ThreadPayload *payload = arg;
+
     AVFrame *frame = payload->square;
     AVFrame *original_frame = payload->sphere;
-    int slice_start = (frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (frame->height * (jobnr+1)) / nb_jobs;
-    int i, j, plane;
-    int planes = 1;
 
-    for (plane = 0; plane < planes; plane++) {
-        for (i = slice_start; i < slice_end; i++) {
-            for (j = 0; j < frame->width; j++) {
-                copyPixelsFromFishToRect(original_frame, frame, plane, i, j);
-            }
+    int slice_start = (payload->h *  jobnr   ) / nb_jobs;
+    int slice_end   = (payload->h * (jobnr+1)) / nb_jobs;
+
+    int i, j;
+
+    // payload->w, payload->h, payload->hsub, payload->vsub, payload->cw, payload->ch
+        // av_log(NULL, AV_LOG_INFO, "\n x.");
+
+    for (i = slice_start; i < slice_end; ++i) {
+        for (j = 0; j < payload->w; ++j) {
+            copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
         }
     }
+
+    slice_start = (payload->ch *  jobnr   ) / nb_jobs;
+    slice_end   = (payload->ch * (jobnr+1)) / nb_jobs;
+
+    if(original_frame->data[1]){
+
+        // av_log(NULL, AV_LOG_INFO, "\n jobnr: %d, layer 1. slice_start: %d, slice_end: %d, width: %d", jobnr, slice_start, slice_end, payload->cw);
+        for (i = slice_start; i < slice_end; ++i) {
+            for (j = 0; j < payload->cw; ++j) {
+                // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d", i, j);
+                copyPixelsFromFishToRect(original_frame, frame, i, j, 1, payload->cw, payload->ch);
+            }
+        }
+
+    }
+
+    // if(original_frame->data[2]){
+
+    //     for (i = slice_start; i < slice_end; ++i) {
+    //         for (j = 0; j < 1000; ++j) {
+    //             // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d, jobnr: %d layer 2. slice_start: %d, slice_end: %d, width: %d", i, j, jobnr, slice_start, slice_end, payload->cw);
+    //             copyPixelsFromFishToRect(original_frame, frame, i, j, 2, payload->cw, payload->ch);
+    //         }
+    //     }
+
+    // }
+    // av_frame_free(&original_frame);
+
+
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
@@ -439,8 +495,14 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     AVFilterContext *ctx = inlink->dst;
 
+    int planes = 1 ;//av_pix_fmt_count_planes(frame->format);
+    av_log(NULL, AV_LOG_INFO, "\n planes: %d", av_pix_fmt_count_planes(frame->format));
+    av_log(NULL, AV_LOG_INFO, "\n linesize0: %d", (frame->linesize[0]));
+    av_log(NULL, AV_LOG_INFO, "\n linesize1: %d", (frame->linesize[1]));
+    av_log(NULL, AV_LOG_INFO, "\n linesize2: %d", (frame->linesize[2]));
+
     double frame_timestamp = frame->pts == AV_NOPTS_VALUE ? -1 : frame->pts * av_q2d(inlink->time_base);
-    av_log(NULL, AV_LOG_INFO, "\nfilter_frame: timestamp %f", frame_timestamp);
+    // av_log(NULL, AV_LOG_INFO, "\nfilter_frame: timestamp %f", frame_timestamp);
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
 
@@ -449,9 +511,22 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     av_frame_copy(original_frame, frame);
     av_frame_copy_props(original_frame, frame);
 
-    struct ThreadPayload payload = { original_frame, frame };
 
-    // int plane, planes = 1 ;//av_pix_fmt_count_planes(frame->format);
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
+
+    int w = inlink->w;
+    int h = inlink->h;
+    int hsub = desc->log2_chroma_w;
+    int vsub = desc->log2_chroma_h;
+    int cw = AV_CEIL_RSHIFT(w, hsub);
+    int ch = AV_CEIL_RSHIFT(h, vsub);
+
+    av_log(NULL, AV_LOG_INFO, "\n linesize: %d, w: %d, h: %d, hsub: %d, vsub: %d, cw: %d, ch: %d", (frame->linesize[2]), w, h, hsub, vsub, cw, ch);
+    av_log(NULL, AV_LOG_INFO, "\n layer0: %d", frame->data[0]);
+    av_log(NULL, AV_LOG_INFO, "\n layer1: %d", frame->data[1]);
+    av_log(NULL, AV_LOG_INFO, "\n layer2: %d", frame->data[2]);
+
+    struct ThreadPayload payload = { original_frame, frame, w, h, hsub, vsub, cw, ch };
 
     ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
                         FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
