@@ -221,6 +221,7 @@ OBJS-$(CONFIG_EROSION_OPENCL_FILTER)         += vf_neighbor_opencl.o opencl.o \
                                                 opencl/neighbor.o
 OBJS-$(CONFIG_EXTRACTPLANES_FILTER)          += vf_extractplanes.o
 OBJS-$(CONFIG_FADE_FILTER)                   += vf_fade.o
+OBJS-$(CONFIG_FISHEYE_FILTER)                += vf_fisheye.o
 OBJS-$(CONFIG_FFTDNOIZ_FILTER)               += vf_fftdnoiz.o
 OBJS-$(CONFIG_FFTFILT_FILTER)                += vf_fftfilt.o
 OBJS-$(CONFIG_FIELD_FILTER)                  += vf_field.o
@@ -449,7 +450,6 @@ OBJS-$(CONFIG_SHOWVOLUME_FILTER)             += avf_showvolume.o
 OBJS-$(CONFIG_SHOWWAVES_FILTER)              += avf_showwaves.o
 OBJS-$(CONFIG_SHOWWAVESPIC_FILTER)           += avf_showwaves.o
 OBJS-$(CONFIG_SPECTRUMSYNTH_FILTER)          += vaf_spectrumsynth.o
-
 OBJS-$(CONFIG_TRANSFORM360_FILTER) += vf_transform360.o
 
 # multimedia sources
