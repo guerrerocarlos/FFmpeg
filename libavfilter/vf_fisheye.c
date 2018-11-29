@@ -77,6 +77,8 @@ typedef struct ThreadPayload {
     int vsub;
     int cw;
     int ch;
+    int bpp;
+    int planes;
 };
 
 static av_cold int init(AVFilterContext *ctx)
@@ -115,52 +117,15 @@ static av_cold int init(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    
-    av_log(NULL, AV_LOG_INFO, "\n query_formats");
-
-
-    const FadeContext *s = ctx->priv;
     static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUV440P,  AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_RGB24,    AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_ARGB,     AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_RGBA,     AV_PIX_FMT_BGRA,
+        AV_PIX_FMT_YUV444P,      AV_PIX_FMT_YUV422P,
+        AV_PIX_FMT_YUV420P,      AV_PIX_FMT_YUV411P,
+        AV_PIX_FMT_YUV410P,      AV_PIX_FMT_YUV440P,
+        AV_PIX_FMT_GRAY8,
         AV_PIX_FMT_NONE
     };
-    static const enum AVPixelFormat pix_fmts_rgb[] = {
-        AV_PIX_FMT_RGB24,    AV_PIX_FMT_BGR24,
-        AV_PIX_FMT_ARGB,     AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_RGBA,     AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_NONE
-    };
-    static const enum AVPixelFormat pix_fmts_alpha[] = {
-        AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA444P,
-        AV_PIX_FMT_ARGB,     AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_RGBA,     AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_NONE
-    };
-    static const enum AVPixelFormat pix_fmts_rgba[] = {
-        AV_PIX_FMT_ARGB,     AV_PIX_FMT_ABGR,
-        AV_PIX_FMT_RGBA,     AV_PIX_FMT_BGRA,
-        AV_PIX_FMT_NONE
-    };
-    AVFilterFormats *fmts_list;
 
-    if (s->alpha) {
-        if (s->black_fade)
-            fmts_list = ff_make_format_list(pix_fmts_alpha);
-        else
-            fmts_list = ff_make_format_list(pix_fmts_rgba);
-    } else {
-        if (s->black_fade)
-            fmts_list = ff_make_format_list(pix_fmts);
-        else
-            fmts_list = ff_make_format_list(pix_fmts_rgb);
-    }
+    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
     if (!fmts_list)
         return AVERROR(ENOMEM);
     return ff_set_common_formats(ctx, fmts_list);
@@ -430,6 +395,9 @@ static void copyPixelsFromFishToRect(AVFrame *fish_frame, AVFrame *rect_frame, i
     // *(rect1+(int)(x/2)) = *(fish1+(int)(pfish_x/2)) ; 
     // *(rect2+(int)(x/2)) = *(fish2+(int)(pfish_x/2)) ; 
 
+
+    /// ---
+ 
     int fish_linesize = fish_frame->linesize[layer];
     int rect_linesize = rect_frame->linesize[layer];
 
@@ -443,37 +411,75 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
 
     struct ThreadPayload *payload = arg;
 
-    AVFrame *frame = payload->square;
-    AVFrame *original_frame = payload->sphere;
+    AVFrame *fish_frame = payload->sphere;
+    AVFrame *rect_frame = payload->square;
+    int slice_start = (fish_frame->height *  jobnr   ) / nb_jobs;
+    int slice_end   = (fish_frame->height * (jobnr+1)) / nb_jobs;
 
-    int slice_start = (payload->h *  jobnr   ) / nb_jobs;
-    int slice_end   = (payload->h * (jobnr+1)) / nb_jobs;
 
     int i, j;
+    
+    int move = 300;
 
-    // payload->w, payload->h, payload->hsub, payload->vsub, payload->cw, payload->ch
-        // av_log(NULL, AV_LOG_INFO, "\n x.");
+    int layer = 0;
 
-    for (i = slice_start; i < slice_end; ++i) {
-        for (j = 0; j < payload->w; ++j) {
-            copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
-        }
-    }
+        int fish_linesize = fish_frame->linesize[layer];
+        int rect_linesize = rect_frame->linesize[layer];
 
-    slice_start = (payload->ch *  jobnr   ) / nb_jobs;
-    slice_end   = (payload->ch * (jobnr+1)) / nb_jobs;
+        for (i = slice_start; i < (slice_end) ; i++) {
+            for (j = 0; j < (payload->w * payload->bpp - move); j++) {
 
-    if(original_frame->data[1]){
+                // if(j > payload->w * payload->bpp/2){
+                    (rect_frame->data[layer])[(int)i*rect_linesize + j] = (fish_frame->data[layer])[(i*fish_linesize) + j+move];
+                // } else {
+                    // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
+                // }
 
-        // av_log(NULL, AV_LOG_INFO, "\n jobnr: %d, layer 1. slice_start: %d, slice_end: %d, width: %d", jobnr, slice_start, slice_end, payload->cw);
-        for (i = slice_start; i < slice_end; ++i) {
-            for (j = 0; j < payload->cw; ++j) {
-                // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d", i, j);
-                copyPixelsFromFishToRect(original_frame, frame, i, j, 1, payload->cw, payload->ch);
+                // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
             }
         }
 
-    }
+    layer = 1;
+
+        fish_linesize = fish_frame->linesize[layer];
+        rect_linesize = rect_frame->linesize[layer];
+
+        for (i = slice_start; i < (slice_end) ; i++) {
+            for (j = 0; j < (payload->w * payload->bpp - move); j++) {
+
+                // if(j > payload->w * payload->bpp/2){
+                    (rect_frame->data[layer])[(int)i*rect_linesize + j] = (fish_frame->data[layer])[(i*fish_linesize) + j+move/2];
+                // } else {
+                    // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
+                // }
+
+                // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
+            }
+        }
+
+    // const int width = AV_CEIL_RSHIFT(frame->width, payload->hsub);
+    // const int height= AV_CEIL_RSHIFT(frame->height, payload->vsub);
+    // slice_start = (height *  jobnr   ) / nb_jobs;
+    // slice_end   = FFMIN(((height * (jobnr+1)) / nb_jobs), frame->height);
+
+    // // if(original_frame->data[1]){
+
+    //     // av_log(NULL, AV_LOG_INFO, "\n jobnr: %d, layer 1. slice_start: %d, slice_end: %d, width: %d", jobnr, slice_start, slice_end, payload->cw);
+    //     for (i = slice_start; i < slice_end; ++i) {
+    //         for (j = 0; j < width; ++j) {
+    //             // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d", i, j);
+    //             copyPixelsFromFishToRect(original_frame, frame, i, j, 1, payload->cw, payload->ch);
+    //         }
+    //     }
+
+        // for (i = slice_start; i < slice_end; ++i) {
+        //     for (j = 0; j < payload->cw; ++j) {
+        //         // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d", i, j);
+        //         copyPixelsFromFishToRect(original_frame, frame, i, j, 2, payload->cw, payload->ch);
+        //     }
+        // }
+
+    // }
 
     // if(original_frame->data[2]){
 
@@ -514,23 +520,25 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
+    int bpp = av_get_bits_per_pixel(desc) >> 3;
+    // int planes = desc->nb_components;
     int w = inlink->w;
     int h = inlink->h;
     int hsub = desc->log2_chroma_w;
     int vsub = desc->log2_chroma_h;
-    int cw = AV_CEIL_RSHIFT(w, hsub);
-    int ch = AV_CEIL_RSHIFT(h, vsub);
+    int cw = AV_CEIL_RSHIFT(frame->width, hsub);
+    int ch = AV_CEIL_RSHIFT(frame->height, vsub);
 
-    av_log(NULL, AV_LOG_INFO, "\n linesize: %d, w: %d, h: %d, hsub: %d, vsub: %d, cw: %d, ch: %d", (frame->linesize[2]), w, h, hsub, vsub, cw, ch);
+    av_log(NULL, AV_LOG_INFO, "\n linesize: %d, w: %d, h: %d, hsub: %d, vsub: %d, cw: %d, ch: %d, bpp: %d", (frame->linesize[2]), w, h, hsub, vsub, cw, ch, bpp);
     av_log(NULL, AV_LOG_INFO, "\n layer0: %d", frame->data[0]);
     av_log(NULL, AV_LOG_INFO, "\n layer1: %d", frame->data[1]);
     av_log(NULL, AV_LOG_INFO, "\n layer2: %d", frame->data[2]);
 
-    struct ThreadPayload payload = { original_frame, frame, w, h, hsub, vsub, cw, ch };
+    struct ThreadPayload payload = { original_frame, frame, w, h, hsub, vsub, cw, ch, bpp, planes };
 
     ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
                         FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
-                            
+
     // Calculate Fade assuming this is a Fade In
     // if (s->fade_state == VF_FADE_WAITING) {
     //     s->factor=0;
