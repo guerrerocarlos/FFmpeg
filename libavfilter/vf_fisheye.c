@@ -416,8 +416,10 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int slice_start = (fish_frame->height *  jobnr   ) / nb_jobs;
     int slice_end   = (fish_frame->height * (jobnr+1)) / nb_jobs;
 
+    int width = fish_frame->width;
+    int height = fish_frame->height;
 
-    int i, j;
+    int x, y;
     
     int move = 300;
 
@@ -426,11 +428,19 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
         int fish_linesize = fish_frame->linesize[layer];
         int rect_linesize = rect_frame->linesize[layer];
 
-        for (i = slice_start; i < (slice_end) ; i++) {
-            for (j = 0; j < (payload->w * payload->bpp - move); j++) {
+        for (y = slice_start; y < slice_end ; y++) {
+            for (x = 0; x < width; x++) {
 
                 // if(j > payload->w * payload->bpp/2){
-                    (rect_frame->data[layer])[(int)i*rect_linesize + j] = (fish_frame->data[layer])[(i*fish_linesize) + j+move];
+                    // (rect_frame->data[0])[(int)y*width + x] = (fish_frame->data[0])[(y*width) + x];
+                    (rect_frame->data[1])[(int)y*(width)/2 + x/2] = slice_start ;//(fish_frame->data[1])[(y/2*width/2) + x/2];
+                    // (rect_frame->data[2])[(int)y/2*(width)/2 + x/2] = slice_start ;//(fish_frame->data[1])[(y/2*width/2) + x/2];
+
+                    // size.total = size.width * size.height;
+                    // y = yuv[position.y * size.width + position.x];
+                    // u = yuv[(position.y / 2) * (size.width / 2) + (position.x / 2) + size.total];
+                    // v = yuv[(position.y / 2) * (size.width / 2) + (position.x / 2) + size.total + (size.total / 4)];
+
                 // } else {
                     // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
                 // }
@@ -439,23 +449,24 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
             }
         }
 
-    layer = 1;
+    // layer = 1;
 
-        fish_linesize = fish_frame->linesize[layer];
-        rect_linesize = rect_frame->linesize[layer];
+    //     fish_linesize = fish_frame->linesize[layer];
+    //     rect_linesize = rect_frame->linesize[layer];
 
-        for (i = slice_start; i < (slice_end) ; i++) {
-            for (j = 0; j < (payload->w * payload->bpp - move); j++) {
+    //     for (i = slice_start; i < (slice_end) ; i++) {
+    //         for (j = 0; j < (payload->w * payload->bpp - move); j++) {
 
-                // if(j > payload->w * payload->bpp/2){
-                    (rect_frame->data[layer])[(int)i*rect_linesize + j] = (fish_frame->data[layer])[(i*fish_linesize) + j+move/2];
-                // } else {
-                    // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
-                // }
+    //             // if(j > payload->w * payload->bpp/2){
+    //                 (rect_frame->data[layer])[(int)(i*2)*rect_linesize + j] = 0 ; //(fish_frame->data[layer])[(i*fish_linesize) + j+move/2];
+    //                 // (rect_frame->data[layer])[(int)i*rect_linesize + 1+j*2] = (fish_frame->data[layer])[(i*fish_linesize) + 1+j*2+move/2];
+    //             // } else {
+    //                 // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
+    //             // }
 
-                // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
-            }
-        }
+    //             // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
+    //         }
+    //     }
 
     // const int width = AV_CEIL_RSHIFT(frame->width, payload->hsub);
     // const int height= AV_CEIL_RSHIFT(frame->height, payload->vsub);
@@ -502,20 +513,20 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     AVFilterContext *ctx = inlink->dst;
 
     int planes = 1 ;//av_pix_fmt_count_planes(frame->format);
-    av_log(NULL, AV_LOG_INFO, "\n planes: %d", av_pix_fmt_count_planes(frame->format));
-    av_log(NULL, AV_LOG_INFO, "\n linesize0: %d", (frame->linesize[0]));
-    av_log(NULL, AV_LOG_INFO, "\n linesize1: %d", (frame->linesize[1]));
-    av_log(NULL, AV_LOG_INFO, "\n linesize2: %d", (frame->linesize[2]));
+    // av_log(NULL, AV_LOG_INFO, "\n planes: %d", av_pix_fmt_count_planes(frame->format));
+    // av_log(NULL, AV_LOG_INFO, "\n linesize0: %d", (frame->linesize[0]));
+    // av_log(NULL, AV_LOG_INFO, "\n linesize1: %d", (frame->linesize[1]));
+    // av_log(NULL, AV_LOG_INFO, "\n linesize2: %d", (frame->linesize[2]));
 
     double frame_timestamp = frame->pts == AV_NOPTS_VALUE ? -1 : frame->pts * av_q2d(inlink->time_base);
     // av_log(NULL, AV_LOG_INFO, "\nfilter_frame: timestamp %f", frame_timestamp);
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
 
-    AVFrame *original_frame = ff_get_video_buffer(outlink, frame->width, frame->height);
+    // AVFrame *original_frame = ff_get_video_buffer(outlink, frame->width, frame->height);
     
-    av_frame_copy(original_frame, frame);
-    av_frame_copy_props(original_frame, frame);
+    // av_frame_copy(original_frame, frame);
+    // av_frame_copy_props(original_frame, frame);
 
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
@@ -529,88 +540,65 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     int cw = AV_CEIL_RSHIFT(frame->width, hsub);
     int ch = AV_CEIL_RSHIFT(frame->height, vsub);
 
-    av_log(NULL, AV_LOG_INFO, "\n linesize: %d, w: %d, h: %d, hsub: %d, vsub: %d, cw: %d, ch: %d, bpp: %d", (frame->linesize[2]), w, h, hsub, vsub, cw, ch, bpp);
-    av_log(NULL, AV_LOG_INFO, "\n layer0: %d", frame->data[0]);
-    av_log(NULL, AV_LOG_INFO, "\n layer1: %d", frame->data[1]);
-    av_log(NULL, AV_LOG_INFO, "\n layer2: %d", frame->data[2]);
+    // av_log(NULL, AV_LOG_INFO, "\n linesize: %d, w: %d, h: %d, hsub: %d, vsub: %d, cw: %d, ch: %d, bpp: %d", (frame->linesize[2]), w, h, hsub, vsub, cw, ch, bpp);
+    // av_log(NULL, AV_LOG_INFO, "\n layer0: %d", frame->data[0]);
+    // av_log(NULL, AV_LOG_INFO, "\n layer1: %d", frame->data[1]);
+    // av_log(NULL, AV_LOG_INFO, "\n layer2: %d", frame->data[2]);
 
-    struct ThreadPayload payload = { original_frame, frame, w, h, hsub, vsub, cw, ch, bpp, planes };
+    // struct ThreadPayload payload = { original_frame, frame, w, h, hsub, vsub, cw, ch, bpp, planes };
 
-    ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
-                        FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
-
-    // Calculate Fade assuming this is a Fade In
-    // if (s->fade_state == VF_FADE_WAITING) {
-    //     s->factor=0;
-    //     if (frame_timestamp >= s->start_time/(double)AV_TIME_BASE
-    //         && inlink->frame_count_out >= s->start_frame) {
-    //         // Time to start fading
-    //         s->fade_state = VF_FADE_FADING;
-
-    //         // Save start time in case we are starting based on frames and fading based on time
-    //         if (s->start_time == 0 && s->start_frame != 0) {
-    //             s->start_time = frame_timestamp*(double)AV_TIME_BASE;
-    //         }
-
-    //         // Save start frame in case we are starting based on time and fading based on frames
-    //         if (s->start_time != 0 && s->start_frame == 0) {
-    //             s->start_frame = inlink->frame_count_out;
-    //         }
-    //     }
-    // }
-    // if (s->fade_state == VF_FADE_FADING) {
-    //     if (s->duration == 0) {
-    //         // Fading based on frame count
-    //         s->factor = (inlink->frame_count_out - s->start_frame) * s->fade_per_frame;
-    //         if (inlink->frame_count_out > s->start_frame + s->nb_frames) {
-    //             s->fade_state = VF_FADE_DONE;
-    //         }
-
-    //     } else {
-    //         // Fading based on duration
-    //         s->factor = (frame_timestamp - s->start_time/(double)AV_TIME_BASE)
-    //                         * (float) UINT16_MAX / (s->duration/(double)AV_TIME_BASE);
-    //         if (frame_timestamp > s->start_time/(double)AV_TIME_BASE
-    //                               + s->duration/(double)AV_TIME_BASE) {
-    //             s->fade_state = VF_FADE_DONE;
-    //         }
-    //     }
-    // }
-    // if (s->fade_state == VF_FADE_DONE) {
-    //     s->factor=UINT16_MAX;
-    // }
-
-    // s->factor = av_clip_uint16(s->factor);
-
-    // Invert fade_factor if Fading Out
-    // if (s->type == FADE_OUT) {
-    //     s->factor=UINT16_MAX-s->factor;
-    // }
-
-    // ctx->internal->execute(ctx, filter_slice_sphere, frame, NULL,
+    // ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
     //                     FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
 
-    // if (s->alpha) {
-    //     ctx->internal->execute(ctx, filter_slice_alpha, frame, NULL,
-    //                         FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
-    // } else if (s->is_packed_rgb && !s->black_fade) {
-    //     ctx->internal->execute(ctx, filter_slice_rgb, frame, NULL,
-    //                             FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
-    // } else {
-    //     /* luma, or rgb plane in case of black */
-    //     av_log(NULL, AV_LOG_INFO, "\n call [filter_slice_luma]");
+    int x, y;
+    int line_width = frame->linesize[1];
+    int luma_line_width = frame->linesize[0];
+    int chroma_line_width = frame->linesize[1];
 
-    //     ctx->internal->execute(ctx, filter_slice_luma, frame, NULL,
-    //                         FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
+    for (y = 0; y < frame->height ; y++) {
+        // av_log(NULL, AV_LOG_INFO, "\n------\n");
 
-    //     if (frame->data[1] && frame->data[2]) {
-    //         /* chroma planes */
-    //         av_log(NULL, AV_LOG_INFO, "\n call [filter_slice_chroma]");
+        for (x = 0; x < luma_line_width; x++) {
+            
+            // av_log(NULL, AV_LOG_INFO, " %d ", (frame->data[1])[(int)y*(w) + x]);
+            if(y > frame->height/2) {
+                *(frame->data[0] + y * luma_line_width + x) = 0 ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            } 
+            // if(x < line_width/2) {
+                // *(frame->data[2] + y/2 * line_width + x) = 0 ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            // } 
 
-    //         ctx->internal->execute(ctx, filter_slice_chroma, frame, NULL,
-    //                             FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
-    //     }
+        }
+
+        for (x = 0; x < chroma_line_width; x++) {
+            
+            // av_log(NULL, AV_LOG_INFO, " %d ", (frame->data[1])[(int)y*(w) + x]);
+            if(x > chroma_line_width/2) {
+                *(frame->data[1] + y/2 * chroma_line_width + x) = 0 ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            } 
+            if(x < chroma_line_width/2) {
+                *(frame->data[2] + y/2 * chroma_line_width + x) = 0 ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            } 
+
+        }
+        // if(j > payload->w * payload->bpp/2){
+            // (frame->data[0])[(int)y*w + x] = (original_frame->data[0])[(y*w) + x];
+            // (frame->data[1])[(int)y/2*(w)/2 + x/8] = (y/h)*100 ; //y+x ;//(fish_frame->data[1])[(y/2*width/2) + x/2];
+            // (rect_frame->data[2])[(int)y/2*(width)/2 + x/2] = slice_start ;//(fish_frame->data[1])[(y/2*width/2) + x/2];
+
+            // size.total = size.width * size.height;
+            // y = yuv[position.y * size.width + position.x];
+            // u = yuv[(position.y / 2) * (size.width / 2) + (position.x / 2) + size.total];
+            // v = yuv[(position.y / 2) * (size.width / 2) + (position.x / 2) + size.total + (size.total / 4)];
+
+        // } else {
+            // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
+        // }
+
+        // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
     // }
+}
+
 
     return ff_filter_frame(inlink->dst->outputs[0], frame);
 }
