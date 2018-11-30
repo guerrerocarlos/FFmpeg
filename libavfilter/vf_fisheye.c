@@ -66,7 +66,6 @@ static av_cold int init(AVFilterContext *ctx)
     av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter...");
 
     FisheyeContext *s = ctx->priv;
-    // av_log(NULL, AV_LOG_INFO, "\n Angle: %d", s->angle);
 
     return 0;
 }
@@ -78,7 +77,6 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_YUV420P,      AV_PIX_FMT_YUV411P,
         AV_PIX_FMT_YUV410P,      AV_PIX_FMT_YUV440P,
         AV_PIX_FMT_YUVJ420P,
-        // AV_PIX_FMT_GRAY8,
         AV_PIX_FMT_NONE
     };
 
@@ -98,8 +96,6 @@ const static enum AVPixelFormat studio_level_pix_fmts[] = {
 static int config_props(AVFilterLink *inlink)
 {
     FisheyeContext *s = inlink->dst->priv;
-    // const AVPixFmtDescriptor *pixdesc = av_pix_fmt_desc_get(inlink->format);
-
     return 0;
 }
 
@@ -160,12 +156,12 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     for (y = slice_start; y < slice_end ; y++) {
         for (x = 0; x < luma_line_width; x++) {
             mapFromFisheyeToSquare(x, y, luma_line_width, frame->height, &square_x, &square_y, s);
-            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ;
             if(frame->data[1]) {
                 chroma_x = x * chroma_line_width / luma_line_width;
                 square_x = square_x  * chroma_line_width / luma_line_width;
-                *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-                *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+                *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; 
+                *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; 
             }
         }
     }
