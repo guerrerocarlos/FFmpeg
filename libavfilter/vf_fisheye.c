@@ -565,29 +565,16 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     int chroma_line_width = frame->linesize[1];
     int square_x;
     int square_y;
+    int chroma_x;
 
     for (y = 0; y < frame->height ; y++) {
-
         for (x = 0; x < luma_line_width; x++) {
-
             mapFromFisheyeToSquare(x, y, luma_line_width, frame->height, &square_x, &square_y);
-
-            // if(y > frame->height) {
-                *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-            // } 
-        }
-
-        for (x = 0; x < chroma_line_width; x++) {
-
-            mapFromFisheyeToSquare(x, y, chroma_line_width, frame->height, &square_x, &square_y);
-
-            // if(x > chroma_line_width/2) {
-                *(frame->data[1] + y/2 * chroma_line_width + x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-            // } 
-            // if(x < chroma_line_width/2) {
-                *(frame->data[2] + y/2 * chroma_line_width + x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-            // } 
-
+            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            chroma_x = x * chroma_line_width / luma_line_width;
+            square_x = square_x  * chroma_line_width / luma_line_width;
+            *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
         }
 }
 
