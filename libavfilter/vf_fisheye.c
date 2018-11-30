@@ -39,6 +39,7 @@
 #include "video.h"
 
 #define PI 3.1415926536
+#define SAMPLES 2000
 
 typedef struct FisheyeContext {
     const AVClass *class;
@@ -60,15 +61,8 @@ typedef struct ThreadPayload {
     int planes;
 };
 
-static av_cold int init(AVFilterContext *ctx)
-{
-
-    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter...");
-
-    FisheyeContext *s = ctx->priv;
-
-    return 0;
-}
+int projections [2][ SAMPLES ][ SAMPLES ];
+// int yProjections [2][ SAMPLES ][ SAMPLES ];
 
 static int query_formats(AVFilterContext *ctx)
 {
@@ -93,14 +87,9 @@ const static enum AVPixelFormat studio_level_pix_fmts[] = {
     AV_PIX_FMT_NONE
 };
 
-static int config_props(AVFilterLink *inlink)
-{
-    FisheyeContext *s = inlink->dst->priv;
-    return 0;
-}
 
 // Fisheye to spherical conversion
-static void mapFromFisheyeToSquare(int x, int y, float width, float height, int *pfish_x, int *pfish_y, FisheyeContext *s) {
+static void mapFromFisheyeToSquare(int x, int y, float width, float height, int *pfish_x, int *pfish_y) {
     // inspired on fish2sphere function in http://paulbourke.net/dome/fish2/
     
     // Assumes the fisheye image is square, centered, and the circle fills the image.
@@ -131,6 +120,39 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
 
 }
 
+
+static av_cold int init(AVFilterContext *ctx)
+{
+
+    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter...");
+
+    FisheyeContext *s = ctx->priv;
+
+    int x, y;
+    for (y = 0; y < SAMPLES ; y++) {
+        for (x = 0; x < SAMPLES; x++) {
+            // av_log(NULL, AV_LOG_INFO, "\n calculating...");
+
+            mapFromFisheyeToSquare(x, y, SAMPLES, SAMPLES, &projections[0][x][y], &projections[1][x][y]);
+            // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, xProjections[y][x], yProjections[y][x]);
+        }
+    }
+    // av_log(NULL, AV_LOG_INFO, "\n Fisheye mapping finished.");
+    // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d.");
+    av_log(NULL, AV_LOG_INFO, "\n Fisheye mapping finished.");
+
+    return 0;
+}
+
+static int config_props(AVFilterLink *inlink)
+{
+    FisheyeContext *s = inlink->dst->priv;
+
+
+
+    return 0;
+}
+
 static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg, 
                               int jobnr,
                               int nb_jobs){
@@ -152,12 +174,22 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int square_x;
     int square_y;
     int chroma_x;
+    int saved_x, input_x, saved_y, input_y;
 
     for (y = slice_start; y < slice_end ; y++) {
-        for (x = 0; x < luma_line_width; x++) {
-            mapFromFisheyeToSquare(x, y, luma_line_width, frame->height, &square_x, &square_y, s);
+        for (x = 0; x < original_frame->width; x++) {
+            input_x = x * SAMPLES / luma_line_width ; 
+            input_y = y * SAMPLES / original_frame->height ; 
+
+            saved_x = projections[0][input_x][input_y];
+            saved_y = projections[1][input_x][input_y];
+
+            square_x = saved_x * luma_line_width / SAMPLES;
+            square_y = saved_y * original_frame->height / SAMPLES;
+
             *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ;
-            if(frame->data[1]) {
+           
+            if(frame->data[2]) {
                 chroma_x = x * chroma_line_width / luma_line_width;
                 square_x = square_x  * chroma_line_width / luma_line_width;
                 *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; 
@@ -188,7 +220,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     int luma_line_width = frame->linesize[0];
     int chroma_line_width = frame->linesize[1];
-
+    
     struct ThreadPayload payload = { original_frame, frame, luma_line_width, chroma_line_width, planes };
 
     ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
