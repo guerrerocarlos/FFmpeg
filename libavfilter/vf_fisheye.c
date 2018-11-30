@@ -74,15 +74,10 @@ typedef struct xyStruct {
 } xyStruct;
 
 typedef struct ThreadPayload {
-    AVFrame *sphere;
-    AVFrame *square;
-    int w;
-    int h;
-    int hsub;
-    int vsub;
-    int cw;
-    int ch;
-    int bpp;
+    AVFrame *original_frame;
+    AVFrame *frame;
+    int luma_line_width;
+    int chroma_line_width;
     int planes;
 };
 
@@ -421,98 +416,29 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
 
     struct ThreadPayload *payload = arg;
 
-    AVFrame *fish_frame = payload->sphere;
-    AVFrame *rect_frame = payload->square;
-    int slice_start = (fish_frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (fish_frame->height * (jobnr+1)) / nb_jobs;
+    AVFrame *original_frame = payload->original_frame;
+    AVFrame *frame = payload->frame;
+    int luma_line_width = payload->luma_line_width;
+    int chroma_line_width = payload->chroma_line_width;
 
-    int width = fish_frame->width;
-    int height = fish_frame->height;
+    int slice_start = (original_frame->height *  jobnr   ) / nb_jobs;
+    int slice_end   = (original_frame->height * (jobnr+1)) / nb_jobs;
 
     int x, y;
-    
-    int move = 300;
+    int square_x;
+    int square_y;
+    int chroma_x;
 
-    int layer = 0;
-
-        int fish_linesize = fish_frame->linesize[layer];
-        int rect_linesize = rect_frame->linesize[layer];
-
-        for (y = slice_start; y < slice_end ; y++) {
-            for (x = 0; x < width; x++) {
-
-                // if(j > payload->w * payload->bpp/2){
-                    // (rect_frame->data[0])[(int)y*width + x] = (fish_frame->data[0])[(y*width) + x];
-                    (rect_frame->data[1])[(int)y*(width)/2 + x/2] = slice_start ;//(fish_frame->data[1])[(y/2*width/2) + x/2];
-                    // (rect_frame->data[2])[(int)y/2*(width)/2 + x/2] = slice_start ;//(fish_frame->data[1])[(y/2*width/2) + x/2];
-
-                    // size.total = size.width * size.height;
-                    // y = yuv[position.y * size.width + position.x];
-                    // u = yuv[(position.y / 2) * (size.width / 2) + (position.x / 2) + size.total];
-                    // v = yuv[(position.y / 2) * (size.width / 2) + (position.x / 2) + size.total + (size.total / 4)];
-
-                // } else {
-                    // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
-                // }
-
-                // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
-            }
+    for (y = slice_start; y < slice_end ; y++) {
+        for (x = 0; x < luma_line_width; x++) {
+            mapFromFisheyeToSquare(x, y, luma_line_width, frame->height, &square_x, &square_y);
+            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            chroma_x = x * chroma_line_width / luma_line_width;
+            square_x = square_x  * chroma_line_width / luma_line_width;
+            *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+            *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
         }
-
-    // layer = 1;
-
-    //     fish_linesize = fish_frame->linesize[layer];
-    //     rect_linesize = rect_frame->linesize[layer];
-
-    //     for (i = slice_start; i < (slice_end) ; i++) {
-    //         for (j = 0; j < (payload->w * payload->bpp - move); j++) {
-
-    //             // if(j > payload->w * payload->bpp/2){
-    //                 (rect_frame->data[layer])[(int)(i*2)*rect_linesize + j] = 0 ; //(fish_frame->data[layer])[(i*fish_linesize) + j+move/2];
-    //                 // (rect_frame->data[layer])[(int)i*rect_linesize + 1+j*2] = (fish_frame->data[layer])[(i*fish_linesize) + 1+j*2+move/2];
-    //             // } else {
-    //                 // (rect_frame->data[layer])[(int)(i/2)*rect_linesize + (int)(j/2)] = 50;
-    //             // }
-
-    //             // copyPixelsFromFishToRect(original_frame, frame, i, j, 0, payload->w, payload->h);
-    //         }
-    //     }
-
-    // const int width = AV_CEIL_RSHIFT(frame->width, payload->hsub);
-    // const int height= AV_CEIL_RSHIFT(frame->height, payload->vsub);
-    // slice_start = (height *  jobnr   ) / nb_jobs;
-    // slice_end   = FFMIN(((height * (jobnr+1)) / nb_jobs), frame->height);
-
-    // // if(original_frame->data[1]){
-
-    //     // av_log(NULL, AV_LOG_INFO, "\n jobnr: %d, layer 1. slice_start: %d, slice_end: %d, width: %d", jobnr, slice_start, slice_end, payload->cw);
-    //     for (i = slice_start; i < slice_end; ++i) {
-    //         for (j = 0; j < width; ++j) {
-    //             // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d", i, j);
-    //             copyPixelsFromFishToRect(original_frame, frame, i, j, 1, payload->cw, payload->ch);
-    //         }
-    //     }
-
-        // for (i = slice_start; i < slice_end; ++i) {
-        //     for (j = 0; j < payload->cw; ++j) {
-        //         // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d", i, j);
-        //         copyPixelsFromFishToRect(original_frame, frame, i, j, 2, payload->cw, payload->ch);
-        //     }
-        // }
-
-    // }
-
-    // if(original_frame->data[2]){
-
-    //     for (i = slice_start; i < slice_end; ++i) {
-    //         for (j = 0; j < 1000; ++j) {
-    //             // av_log(NULL, AV_LOG_INFO, "\n x: %d y: %d, jobnr: %d layer 2. slice_start: %d, slice_end: %d, width: %d", i, j, jobnr, slice_start, slice_end, payload->cw);
-    //             copyPixelsFromFishToRect(original_frame, frame, i, j, 2, payload->cw, payload->ch);
-    //         }
-    //     }
-
-    // }
-    // av_frame_free(&original_frame);
+    }
 
 
 }
@@ -522,7 +448,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     AVFilterContext *ctx = inlink->dst;
 
-    int planes = 1 ;//av_pix_fmt_count_planes(frame->format);
+    int planes = 3 ;//av_pix_fmt_count_planes(frame->format);
     // av_log(NULL, AV_LOG_INFO, "\n planes: %d", av_pix_fmt_count_planes(frame->format));
     // av_log(NULL, AV_LOG_INFO, "\n linesize0: %d", (frame->linesize[0]));
     // av_log(NULL, AV_LOG_INFO, "\n linesize1: %d", (frame->linesize[1]));
@@ -540,43 +466,32 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
-    int bpp = av_get_bits_per_pixel(desc) >> 3;
+    // int bpp = av_get_bits_per_pixel(desc) >> 3;
     // int planes = desc->nb_components;
-    int w = inlink->w;
-    int h = inlink->h;
-    int hsub = desc->log2_chroma_w;
-    int vsub = desc->log2_chroma_h;
-    int cw = AV_CEIL_RSHIFT(frame->width, hsub);
-    int ch = AV_CEIL_RSHIFT(frame->height, vsub);
 
-    // av_log(NULL, AV_LOG_INFO, "\n linesize: %d, w: %d, h: %d, hsub: %d, vsub: %d, cw: %d, ch: %d, bpp: %d", (frame->linesize[2]), w, h, hsub, vsub, cw, ch, bpp);
-    // av_log(NULL, AV_LOG_INFO, "\n layer0: %d", frame->data[0]);
-    // av_log(NULL, AV_LOG_INFO, "\n layer1: %d", frame->data[1]);
-    // av_log(NULL, AV_LOG_INFO, "\n layer2: %d", frame->data[2]);
-
-    // struct ThreadPayload payload = { original_frame, frame, w, h, hsub, vsub, cw, ch, bpp, planes };
-
-    // ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
-    //                     FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
-
-    int x, y;
-    int line_width = frame->linesize[1];
+    // int x, y;
     int luma_line_width = frame->linesize[0];
     int chroma_line_width = frame->linesize[1];
-    int square_x;
-    int square_y;
-    int chroma_x;
+    // int square_x;
+    // int square_y;
+    // int chroma_x;
 
-    for (y = 0; y < frame->height ; y++) {
-        for (x = 0; x < luma_line_width; x++) {
-            mapFromFisheyeToSquare(x, y, luma_line_width, frame->height, &square_x, &square_y);
-            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-            chroma_x = x * chroma_line_width / luma_line_width;
-            square_x = square_x  * chroma_line_width / luma_line_width;
-            *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-            *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
-        }
-}
+    struct ThreadPayload payload = { original_frame, frame, luma_line_width, chroma_line_width, planes };
+
+    ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
+                        FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
+
+
+    // for (y = 0; y < frame->height ; y++) {
+    //     for (x = 0; x < luma_line_width; x++) {
+    //         mapFromFisheyeToSquare(x, y, luma_line_width, frame->height, &square_x, &square_y);
+    //         *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+    //         chroma_x = x * chroma_line_width / luma_line_width;
+    //         square_x = square_x  * chroma_line_width / luma_line_width;
+    //         *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+    //         *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; //x>w/2 ? 0 :(original_frame->data[0])[y * frame->width + x];
+    //     }
+    // }
 
 
     return ff_filter_frame(inlink->dst->outputs[0], frame);
