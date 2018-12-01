@@ -41,6 +41,8 @@
 #define PI 3.1415926536
 #define SAMPLES 2704
 
+int SAMPLESH, SAMPLESW;
+
 typedef struct FisheyeContext
 {
     const AVClass *class;
@@ -51,7 +53,10 @@ typedef struct FisheyeContext
     int margin_bottom;
     int x_center_offset;
     int y_center_offset;
-
+    int merge;
+    int width;
+    int SAMPLESW;
+    int SAMPLESH;
 } FisheyeContext;
 
 typedef struct ThreadPayload
@@ -60,10 +65,11 @@ typedef struct ThreadPayload
     AVFrame *frame;
     int luma_line_width;
     int chroma_line_width;
-    int planes;
+    int SAMPLESH;
+    int SAMPLESW;
 };
 
-int projections[2][SAMPLES][SAMPLES];
+int *projections; //[2][SAMPLES][SAMPLES];
 // int yProjections [2][ SAMPLES ][ SAMPLES ];
 
 static int query_formats(AVFilterContext *ctx)
@@ -121,21 +127,9 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
 
 static av_cold int init(AVFilterContext *ctx)
 {
-    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter...");
 
-    FisheyeContext *s = ctx->priv;
+    
 
-    int x, y;
-    for (y = 0; y < SAMPLES; y++)
-    {
-        for (x = 0; x < SAMPLES; x++)
-        {
-            // av_log(NULL, AV_LOG_INFO, "\n calculating...");
-
-            mapFromFisheyeToSquare(x, y, SAMPLES, SAMPLES, &projections[0][x][y], &projections[1][x][y]);
-            // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, xProjections[y][x], yProjections[y][x]);
-        }
-    }
     // av_log(NULL, AV_LOG_INFO, "\n Fisheye mapping finished.");
     // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d.");
     av_log(NULL, AV_LOG_INFO, "\n Fisheye mapping finished.");
@@ -143,9 +137,56 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
+
 static int config_props(AVFilterLink *inlink)
 {
-    FisheyeContext *s = inlink->dst->priv;
+    // FisheyeContext *s = inlink->dst->priv;
+    AVFilterContext *ctx = inlink->src;
+    FisheyeContext *s = ctx->priv;
+    // AVRational time_base = ctx->inputs[0]->time_base;
+    // AVRational frame_rate = ctx->inputs[0]->frame_rate;
+    // AVRational sar = ctx->inputs[0]->sample_aspect_ratio;
+
+    int SAMPLESH = ctx->inputs[0]->h;
+    int SAMPLESW = ctx->inputs[0]->w;
+
+    s->SAMPLESH = SAMPLESH;
+    s->SAMPLESW = SAMPLESW;
+
+    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter... merge?: %d, mergewidth: %d, width: %d, height: %d", s->merge, s->width, SAMPLESW, SAMPLESH);
+    projections = malloc(2 * SAMPLESW * SAMPLESH * sizeof(int));
+
+    // FisheyeContext *s = ctx->priv;
+
+    if(s->merge) {
+        int x, y;
+        // int width = s->width;
+        for (y = 0; y < SAMPLESH; y++)
+        {
+            for (x = 0; x < SAMPLESW; x++)
+            {
+                // av_log(NULL, AV_LOG_INFO, "\n calculating...");
+                mapFromFisheyeToSquare(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x );
+                // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
+            }
+        }
+    } else {
+        int x, y;
+        // int width = s->width;
+        for (y = 0; y < SAMPLESH; y++)
+        {
+            for (x = 0; x < SAMPLESW; x++)
+            {
+                // av_log(NULL, AV_LOG_INFO, "\n calculating...");
+                mapFromFisheyeToSquare(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x );
+                // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
+            }
+        }
+
+    }
+
+    av_log(NULL, AV_LOG_INFO, "\n Calculations Finished! ");
+
 
     return 0;
 }
@@ -165,8 +206,10 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int luma_line_width = payload->luma_line_width;
     int chroma_line_width = payload->chroma_line_width;
 
-    int slice_start = (original_frame->height * jobnr) / nb_jobs;
-    int slice_end = (original_frame->height * (jobnr + 1)) / nb_jobs;
+    int SAMPLESH = payload->SAMPLESH;
+    int SAMPLESW = payload->SAMPLESW;
+    int slice_start = (SAMPLESH * jobnr) / nb_jobs;
+    int slice_end = (SAMPLESH * (jobnr + 1)) / nb_jobs;
 
     int x, y;
     int square_x;
@@ -174,18 +217,23 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int chroma_x;
     int saved_x, input_x, saved_y, input_y;
 
+    // av_log(NULL, AV_LOG_INFO, "\n -- slice_start %d, slice_end %d, SAMPLESH %d, SAMPLESW %d", slice_start, slice_end, SAMPLESH, SAMPLESW );
+
+
     for (y = slice_start; y < slice_end; y++)
     {
-        for (x = 0; x < original_frame->width; x++)
+        for (x = 0; x < SAMPLESW; x++)
         {
-            input_x = x * SAMPLES / luma_line_width;
-            input_y = y * SAMPLES / original_frame->height;
+            // input_x = x; //* SAMPLESW / luma_line_width;
+            // input_y = y; //* SAMPLESH / original_frame->height;
 
-            saved_x = projections[0][input_x][input_y];
-            saved_y = projections[1][input_x][input_y];
+            square_x = *(projections +                       SAMPLESW * y + x);
+            square_y = *(projections + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
 
-            square_x = saved_x * luma_line_width / SAMPLES;
-            square_y = saved_y * original_frame->height / SAMPLES;
+            // square_x = saved_x * luma_line_width / SAMPLESW;
+            // square_y = saved_y * original_frame->height / SAMPLESH;
+
+            // av_log(NULL, AV_LOG_INFO, "\n -- x:%d, y:%d, px:%d, py:%d", x, y, square_x, square_y );
 
             *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
 
@@ -204,6 +252,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
 
     AVFilterContext *ctx = inlink->dst;
+    FisheyeContext *s = ctx->priv;
 
     // int planes = av_pix_fmt_count_planes(frame->format);
 
@@ -223,7 +272,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     int luma_line_width = frame->linesize[0];
     int chroma_line_width = frame->linesize[1];
 
-    struct ThreadPayload payload = {frame, out, luma_line_width, chroma_line_width};
+    // av_log(NULL, AV_LOG_INFO, "\n -- luma_line_width %d, chroma_line_width %d, SAMPLESH %d, SAMPLESW %d", luma_line_width, chroma_line_width, SAMPLESH, SAMPLESW );
+
+    struct ThreadPayload payload = {frame, out, luma_line_width, chroma_line_width, s->SAMPLESH, s->SAMPLESW};
 
     ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
                            FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
@@ -238,10 +289,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 static const AVOption fade_options[] = {
     // Options will be added based on user's requests //
 
-    // { "angle",           "Fisheye angular (default: 180).",
-    //                                                 OFFSET(angle), AV_OPT_TYPE_INT, { .i64 = 180 }, 0, 360, FLAGS },
-    // { "margin_left",   "Number of frames to which the effect should be applied.",
-    //                                                 OFFSET(margin_left),   AV_OPT_TYPE_INT, { .i64 = 25 }, 0, INT_MAX, FLAGS },
+    { "merge",           "Merges two equirectangulars.",
+                                                    OFFSET(merge), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "width",   "Width of the action.",
+                                                    OFFSET(width),   AV_OPT_TYPE_INT, { .i64 = 100 }, 0, INT_MAX, FLAGS },
     // { "margin_right",           "Number of frames to which the effect should be applied.",
     //                                                 OFFSET(margin_right),   AV_OPT_TYPE_INT, { .i64 = 25 }, 0, INT_MAX, FLAGS },
     // { "margin_top",  "Number of seconds of the beginning of the effect.",
@@ -260,7 +311,6 @@ static const AVFilterPad avfilter_vf_fade_inputs[] = {
     {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
-        .config_props = config_props,
         .filter_frame = filter_frame,
         .needs_writable = 1,
     },
@@ -269,6 +319,7 @@ static const AVFilterPad avfilter_vf_fade_inputs[] = {
 static const AVFilterPad avfilter_vf_fade_outputs[] = {
     {
         .name = "default",
+        .config_props = config_props,
         .type = AVMEDIA_TYPE_VIDEO,
     },
     {NULL}};
