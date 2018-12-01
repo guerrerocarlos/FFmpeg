@@ -39,9 +39,10 @@
 #include "video.h"
 
 #define PI 3.1415926536
-#define SAMPLES 2000
+#define SAMPLES 2704
 
-typedef struct FisheyeContext {
+typedef struct FisheyeContext
+{
     const AVClass *class;
     int angle;
     int margin_left;
@@ -53,7 +54,8 @@ typedef struct FisheyeContext {
 
 } FisheyeContext;
 
-typedef struct ThreadPayload {
+typedef struct ThreadPayload
+{
     AVFrame *original_frame;
     AVFrame *frame;
     int luma_line_width;
@@ -61,18 +63,17 @@ typedef struct ThreadPayload {
     int planes;
 };
 
-int projections [2][ SAMPLES ][ SAMPLES ];
+int projections[2][SAMPLES][SAMPLES];
 // int yProjections [2][ SAMPLES ][ SAMPLES ];
 
 static int query_formats(AVFilterContext *ctx)
 {
     static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUV444P,      AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV420P,      AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV410P,      AV_PIX_FMT_YUV440P,
+        AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV422P,
+        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV411P,
+        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV440P,
         AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_NONE
-    };
+        AV_PIX_FMT_NONE};
 
     AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
     if (!fmts_list)
@@ -81,17 +82,16 @@ static int query_formats(AVFilterContext *ctx)
 }
 
 const static enum AVPixelFormat studio_level_pix_fmts[] = {
-    AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV420P,
-    AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
     AV_PIX_FMT_YUV440P,
-    AV_PIX_FMT_NONE
-};
-
+    AV_PIX_FMT_NONE};
 
 // Fisheye to spherical conversion
-static void mapFromFisheyeToSquare(int x, int y, float width, float height, int *pfish_x, int *pfish_y) {
+static void mapFromFisheyeToSquare(int x, int y, float width, float height, int *pfish_x, int *pfish_y)
+{
     // inspired on fish2sphere function in http://paulbourke.net/dome/fish2/
-    
+
     // Assumes the fisheye image is square, centered, and the circle fills the image.
     // Output (spherical) image should have 2:1 aspect.
     // Strange (but helpful) that atan() == atan2(), normally they are different.
@@ -105,11 +105,11 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
     // Vector in 3D space
     float psph_x = cos(phi) * sin(theta);
     float psph_y = cos(phi) * cos(theta);
-    float psph_z = sin(phi) ;//* cos(theta);
+    float psph_z = sin(phi); //* cos(theta);
 
     // Calculate fisheye angle and radius
-    theta = atan2(psph_z,psph_x);
-    phi = atan2(sqrt(psph_x*psph_x+psph_z*psph_z),psph_y);
+    theta = atan2(psph_z, psph_x);
+    phi = atan2(sqrt(psph_x * psph_x + psph_z * psph_z), psph_y);
 
     r = width * phi / PI;
     r2 = height * phi / PI;
@@ -117,20 +117,19 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
     // Pixel in fisheye space
     *pfish_x = 0.5 * width + r * cos(theta);
     *pfish_y = 0.5 * height + r2 * sin(theta);
-
 }
-
 
 static av_cold int init(AVFilterContext *ctx)
 {
-
     av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter...");
 
     FisheyeContext *s = ctx->priv;
 
     int x, y;
-    for (y = 0; y < SAMPLES ; y++) {
-        for (x = 0; x < SAMPLES; x++) {
+    for (y = 0; y < SAMPLES; y++)
+    {
+        for (x = 0; x < SAMPLES; x++)
+        {
             // av_log(NULL, AV_LOG_INFO, "\n calculating...");
 
             mapFromFisheyeToSquare(x, y, SAMPLES, SAMPLES, &projections[0][x][y], &projections[1][x][y]);
@@ -148,14 +147,13 @@ static int config_props(AVFilterLink *inlink)
 {
     FisheyeContext *s = inlink->dst->priv;
 
-
-
     return 0;
 }
 
-static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg, 
-                              int jobnr,
-                              int nb_jobs){
+static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
+                                             int jobnr,
+                                             int nb_jobs)
+{
 
     FisheyeContext *s = ctx->priv;
 
@@ -167,8 +165,8 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int luma_line_width = payload->luma_line_width;
     int chroma_line_width = payload->chroma_line_width;
 
-    int slice_start = (original_frame->height *  jobnr   ) / nb_jobs;
-    int slice_end   = (original_frame->height * (jobnr+1)) / nb_jobs;
+    int slice_start = (original_frame->height * jobnr) / nb_jobs;
+    int slice_end = (original_frame->height * (jobnr + 1)) / nb_jobs;
 
     int x, y;
     int square_x;
@@ -176,10 +174,12 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int chroma_x;
     int saved_x, input_x, saved_y, input_y;
 
-    for (y = slice_start; y < slice_end ; y++) {
-        for (x = 0; x < original_frame->width; x++) {
-            input_x = x * SAMPLES / luma_line_width ; 
-            input_y = y * SAMPLES / original_frame->height ; 
+    for (y = slice_start; y < slice_end; y++)
+    {
+        for (x = 0; x < original_frame->width; x++)
+        {
+            input_x = x * SAMPLES / luma_line_width;
+            input_y = y * SAMPLES / original_frame->height;
 
             saved_x = projections[0][input_x][input_y];
             saved_y = projections[1][input_x][input_y];
@@ -187,18 +187,17 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
             square_x = saved_x * luma_line_width / SAMPLES;
             square_y = saved_y * original_frame->height / SAMPLES;
 
-            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x) ;
-           
-            if(frame->data[2]) {
+            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
+
+            if (frame->data[2])
+            {
                 chroma_x = x * chroma_line_width / luma_line_width;
-                square_x = square_x  * chroma_line_width / luma_line_width;
-                *(frame->data[1] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y/2 * chroma_line_width + square_x) ; 
-                *(frame->data[2] + y/2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y/2 * chroma_line_width + square_x) ; 
+                square_x = square_x * chroma_line_width / luma_line_width;
+                *(frame->data[1] + y / 2 * chroma_line_width + chroma_x) = *(original_frame->data[1] + square_y / 2 * chroma_line_width + square_x);
+                *(frame->data[2] + y / 2 * chroma_line_width + chroma_x) = *(original_frame->data[2] + square_y / 2 * chroma_line_width + square_x);
             }
         }
     }
-
-
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
@@ -206,33 +205,35 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     AVFilterContext *ctx = inlink->dst;
 
-    int planes = av_pix_fmt_count_planes(frame->format);
+    // int planes = av_pix_fmt_count_planes(frame->format);
 
-    double frame_timestamp = frame->pts == AV_NOPTS_VALUE ? -1 : frame->pts * av_q2d(inlink->time_base);
+    // double frame_timestamp = frame->pts == AV_NOPTS_VALUE ? -1 : frame->pts * av_q2d(inlink->time_base);
 
     AVFilterLink *outlink = inlink->dst->outputs[0];
 
-    AVFrame *original_frame = ff_get_video_buffer(outlink, frame->width, frame->height);
-    av_frame_copy(original_frame, frame);
-    av_frame_copy_props(original_frame, frame);
+    AVFrame *out = ff_get_video_buffer(outlink, frame->width, frame->height);
+    if (!out) {
+        av_frame_free(&frame);
+        return AVERROR(ENOMEM);
+    }
+    av_frame_copy_props(out, frame);
 
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
+    // const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
 
     int luma_line_width = frame->linesize[0];
     int chroma_line_width = frame->linesize[1];
-    
-    struct ThreadPayload payload = { original_frame, frame, luma_line_width, chroma_line_width, planes };
+
+    struct ThreadPayload payload = {frame, out, luma_line_width, chroma_line_width};
 
     ctx->internal->execute(ctx, filter_slice_from_sphere_to_rect, &payload, NULL,
-                        FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
+                           FFMIN(frame->height, ff_filter_get_nb_threads(ctx)));
 
-    av_frame_free(&original_frame);
-    return ff_filter_frame(inlink->dst->outputs[0], frame);
+    av_frame_free(&frame);
+    return ff_filter_frame(inlink->dst->outputs[0], out);
 }
 
-
 #define OFFSET(x) offsetof(FisheyeContext, x)
-#define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
+#define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM
 
 static const AVOption fade_options[] = {
     // Options will be added based on user's requests //
@@ -251,38 +252,35 @@ static const AVOption fade_options[] = {
     //                                                 OFFSET(x_center_offset),  AV_OPT_TYPE_DURATION, {.i64 = 0. }, 0, INT32_MAX, FLAGS },
     // { "y_center_offset",    "Duration of the effect in seconds.",
     //                                                 OFFSET(y_center_offset),    AV_OPT_TYPE_DURATION, {.i64 = 0. }, 0, INT32_MAX, FLAGS },
-    { NULL }
-};
+    {NULL}};
 
 AVFILTER_DEFINE_CLASS(fade);
 
 static const AVFilterPad avfilter_vf_fade_inputs[] = {
     {
-        .name           = "default",
-        .type           = AVMEDIA_TYPE_VIDEO,
-        .config_props   = config_props,
-        .filter_frame   = filter_frame,
+        .name = "default",
+        .type = AVMEDIA_TYPE_VIDEO,
+        .config_props = config_props,
+        .filter_frame = filter_frame,
         .needs_writable = 1,
     },
-    { NULL }
-};
+    {NULL}};
 
 static const AVFilterPad avfilter_vf_fade_outputs[] = {
     {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
-};
+    {NULL}};
 
 AVFilter ff_vf_fisheye = {
-    .name          = "fisheye",
-    .description   = NULL_IF_CONFIG_SMALL("Convert fisheye to rectangular video."),
-    .init          = init,
-    .priv_size     = sizeof(FisheyeContext),
-    .priv_class    = &fade_class,
+    .name = "fisheye",
+    .description = NULL_IF_CONFIG_SMALL("Convert fisheye to rectangular video."),
+    .init = init,
+    .priv_size = sizeof(FisheyeContext),
+    .priv_class = &fade_class,
     .query_formats = query_formats,
-    .inputs        = avfilter_vf_fade_inputs,
-    .outputs       = avfilter_vf_fade_outputs,
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    .inputs = avfilter_vf_fade_inputs,
+    .outputs = avfilter_vf_fade_outputs,
+    .flags = AVFILTER_FLAG_SLICE_THREADS,
 };
