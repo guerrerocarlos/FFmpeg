@@ -125,10 +125,31 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
     *pfish_y = 0.5 * height + r2 * sin(theta);
 }
 
+static void mergePixels(int x, int y, float width, float height, int *origin_x, int *origin_y, int merge_width)
+{   
+    int starting_x = width/4; //- merge_width/2 ;
+    // int left_center = width / 4;
+
+    int x_ = x - starting_x;
+    *origin_x = x - (merge_width) * x_ / ( width / 4 ); // * (5.4e-6 * pow(x_, 2) + 3.9e-7 * pow(x_, 3)) ;
+    // if(x % 2) {
+    // *origin_x = x + (x - starting_x);
+    // }else{
+    //     *origin_x = starting_x + merge_width - (x - starting_x);
+    // }
+    // *origin_y = y + 1;
+
+    // if(x % 2) {
+    //     *origin_x = width / 2 - merge_width/2 + x-width/2;
+    //     *origin_y = y;
+    // } else {
+    //     *origin_x = width / 2 - merge_width/2 + x-width/2;
+    // }
+    *origin_y = y+1;
+}
+
 static av_cold int init(AVFilterContext *ctx)
 {
-
-    
 
     // av_log(NULL, AV_LOG_INFO, "\n Fisheye mapping finished.");
     // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d.");
@@ -136,7 +157,6 @@ static av_cold int init(AVFilterContext *ctx)
 
     return 0;
 }
-
 
 static int config_props(AVFilterLink *inlink)
 {
@@ -158,35 +178,48 @@ static int config_props(AVFilterLink *inlink)
 
     // FisheyeContext *s = ctx->priv;
 
-    if(s->merge) {
-        int x, y;
-        // int width = s->width;
-        for (y = 0; y < SAMPLESH; y++)
-        {
-            for (x = 0; x < SAMPLESW; x++)
-            {
-                // av_log(NULL, AV_LOG_INFO, "\n calculating...");
-                mapFromFisheyeToSquare(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x );
-                // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
-            }
-        }
-    } else {
-        int x, y;
-        // int width = s->width;
-        for (y = 0; y < SAMPLESH; y++)
-        {
-            for (x = 0; x < SAMPLESW; x++)
-            {
-                // av_log(NULL, AV_LOG_INFO, "\n calculating...");
-                mapFromFisheyeToSquare(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x );
-                // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
-            }
-        }
+    if (s->merge)
+    {
+        av_log(NULL, AV_LOG_INFO, "\n Merging!");
 
+        int x, y;
+        for (y = 0; y < SAMPLESH; y++)
+        {
+            for (x = 0; x < SAMPLESW; x++)
+            {
+                // if (x > (SAMPLESW / 2 - s->width / 2) && x < (SAMPLESW / 2 + s->width / 2))
+                if (x > (SAMPLESW / 4) && x < (SAMPLESW / 2) + s->width)
+                {
+                    mergePixels(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x, s->width);
+                }
+                else
+                {
+                    *(projections + SAMPLESW * y + x) = x;
+                    *(projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
+                }
+                // av_log(NULL, AV_LOG_INFO, "\n calculating...");
+                // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
+            }
+        }
+    }
+    else
+    {
+        av_log(NULL, AV_LOG_INFO, "\n Squaring!");
+
+        int x, y;
+        // int width = s->width;
+        for (y = 0; y < SAMPLESH; y++)
+        {
+            for (x = 0; x < SAMPLESW; x++)
+            {
+                // av_log(NULL, AV_LOG_INFO, "\n calculating...");
+                mapFromFisheyeToSquare(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x);
+                // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
+            }
+        }
     }
 
     av_log(NULL, AV_LOG_INFO, "\n Calculations Finished! ");
-
 
     return 0;
 }
@@ -218,8 +251,9 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int saved_x, input_x, saved_y, input_y;
 
     // av_log(NULL, AV_LOG_INFO, "\n -- slice_start %d, slice_end %d, SAMPLESH %d, SAMPLESW %d", slice_start, slice_end, SAMPLESH, SAMPLESW );
-
-
+    // if(s->merge) {
+    //     SAMPLESW = s->width;
+    // }
     for (y = slice_start; y < slice_end; y++)
     {
         for (x = 0; x < SAMPLESW; x++)
@@ -227,7 +261,7 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
             // input_x = x; //* SAMPLESW / luma_line_width;
             // input_y = y; //* SAMPLESH / original_frame->height;
 
-            square_x = *(projections +                       SAMPLESW * y + x);
+            square_x = *(projections + SAMPLESW * y + x);
             square_y = *(projections + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
 
             // square_x = saved_x * luma_line_width / SAMPLESW;
@@ -261,7 +295,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     AVFilterLink *outlink = inlink->dst->outputs[0];
 
     AVFrame *out = ff_get_video_buffer(outlink, frame->width, frame->height);
-    if (!out) {
+    if (!out)
+    {
         av_frame_free(&frame);
         return AVERROR(ENOMEM);
     }
@@ -289,10 +324,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 static const AVOption fade_options[] = {
     // Options will be added based on user's requests //
 
-    { "merge",           "Merges two equirectangulars.",
-                                                    OFFSET(merge), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
-    { "width",   "Width of the action.",
-                                                    OFFSET(width),   AV_OPT_TYPE_INT, { .i64 = 100 }, 0, INT_MAX, FLAGS },
+    {"merge", "Merges two equirectangulars.", OFFSET(merge), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, .flags = FLAGS},
+    {"width", "Width of the action.", OFFSET(width), AV_OPT_TYPE_INT, {.i64 = 100}, 0, INT_MAX, FLAGS},
     // { "margin_right",           "Number of frames to which the effect should be applied.",
     //                                                 OFFSET(margin_right),   AV_OPT_TYPE_INT, { .i64 = 25 }, 0, INT_MAX, FLAGS },
     // { "margin_top",  "Number of seconds of the beginning of the effect.",
