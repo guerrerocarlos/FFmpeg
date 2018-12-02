@@ -70,6 +70,7 @@ typedef struct ThreadPayload
 };
 
 int *projections; //[2][SAMPLES][SAMPLES];
+int *projections2;
 // int yProjections [2][ SAMPLES ][ SAMPLES ];
 
 static int query_formats(AVFilterContext *ctx)
@@ -125,13 +126,13 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
     *pfish_y = 0.5 * height + r2 * sin(theta);
 }
 
-static void mergePixels(int x, int y, float width, float height, int *origin_x, int *origin_y, int merge_width)
+static void mergePixels(int x, float starting_x, float finishing_x, int merge_width, int *delta_x)
 {   
-    int starting_x = width/4; //- merge_width/2 ;
+    // int starting_x = width/4; //- merge_width/2 ;
     // int left_center = width / 4;
-
-    int x_ = x - starting_x;
-    *origin_x = x - (merge_width) * x_ / ( width / 4 ); // * (5.4e-6 * pow(x_, 2) + 3.9e-7 * pow(x_, 3)) ;
+    int width = finishing_x - starting_x;
+    *delta_x = - merge_width * ( x - starting_x ) / (width + merge_width); // * (5.4e-6 * pow(x_, 2) + 3.9e-7 * pow(x_, 3)) ;
+    
     // if(x % 2) {
     // *origin_x = x + (x - starting_x);
     // }else{
@@ -145,7 +146,7 @@ static void mergePixels(int x, int y, float width, float height, int *origin_x, 
     // } else {
     //     *origin_x = width / 2 - merge_width/2 + x-width/2;
     // }
-    *origin_y = y+1;
+    // *origin_y = y+1;
 }
 
 static av_cold int init(AVFilterContext *ctx)
@@ -173,29 +174,45 @@ static int config_props(AVFilterLink *inlink)
     s->SAMPLESH = SAMPLESH;
     s->SAMPLESW = SAMPLESW;
 
-    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter... merge?: %d, mergewidth: %d, width: %d, height: %d", s->merge, s->width, SAMPLESW, SAMPLESH);
-    projections = malloc(2 * SAMPLESW * SAMPLESH * sizeof(int));
+    av_log(NULL, AV_LOG_INFO, "\n Initializing fisheye filter... s->merge?: %d, s->width: %d, SAMPLESW: %d, SAMPLESH: %d", s->merge, s->width, SAMPLESW, SAMPLESH);
 
     // FisheyeContext *s = ctx->priv;
 
     if (s->merge)
     {
         av_log(NULL, AV_LOG_INFO, "\n Merging!");
+        projections = malloc(2 * SAMPLESW * SAMPLESH * sizeof(int));
+        projections2 = malloc(2 * SAMPLESW * SAMPLESH * sizeof(int));
 
         int x, y;
+        int delta_x;
+
         for (y = 0; y < SAMPLESH; y++)
         {
             for (x = 0; x < SAMPLESW; x++)
             {
-                // if (x > (SAMPLESW / 2 - s->width / 2) && x < (SAMPLESW / 2 + s->width / 2))
                 if (x > (SAMPLESW / 4) && x < (SAMPLESW / 2) + s->width)
                 {
-                    mergePixels(x, y, SAMPLESW, SAMPLESH, projections + SAMPLESW * y + x, projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x, s->width);
+                    // av_log(NULL, AV_LOG_INFO, "\n cleaning!");
+                    
+                    mergePixels(x, SAMPLESW/4, SAMPLESW/2, s->width, &delta_x);
+                    *(projections                       + SAMPLESW * y + x) = x + delta_x;
+                    *(projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
+
                 }
                 else
                 {
                     *(projections + SAMPLESW * y + x) = x;
                     *(projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
+                }
+
+                if (x > (SAMPLESW / 2 - s->width) && x < (SAMPLESW * 3 / 4) ) {
+                    mergePixels(x, SAMPLESW * 3 / 4, SAMPLESW / 2 - s->width, s->width, &delta_x);
+                    *(projections2                       + SAMPLESW * y + x) = x - delta_x;
+                    *(projections2 + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
+                } else {
+                    *(projections2 + SAMPLESW * y + x) = x;
+                    *(projections2 + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
                 }
                 // av_log(NULL, AV_LOG_INFO, "\n calculating...");
                 // av_log(NULL, AV_LOG_INFO, "\n for x:%d, y:%d, px:%d, py:%d", x, y, *(SAMPLESW, SAMPLESH, projections + SAMPLESH * y + x), *(projections + SAMPLESH * SAMPLESW + SAMPLESH * y + x) );
@@ -205,6 +222,7 @@ static int config_props(AVFilterLink *inlink)
     else
     {
         av_log(NULL, AV_LOG_INFO, "\n Squaring!");
+        projections = malloc(2 * SAMPLESW * SAMPLESH * sizeof(int));
 
         int x, y;
         // int width = s->width;
@@ -245,10 +263,10 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
     int slice_end = (SAMPLESH * (jobnr + 1)) / nb_jobs;
 
     int x, y;
-    int square_x;
-    int square_y;
+    int square_x, square_y, square_x2, square_y2;
     int chroma_x;
     int saved_x, input_x, saved_y, input_y;
+    int merger_x;
 
     // av_log(NULL, AV_LOG_INFO, "\n -- slice_start %d, slice_end %d, SAMPLESH %d, SAMPLESW %d", slice_start, slice_end, SAMPLESH, SAMPLESW );
     // if(s->merge) {
@@ -260,16 +278,42 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
         {
             // input_x = x; //* SAMPLESW / luma_line_width;
             // input_y = y; //* SAMPLESH / original_frame->height;
+            if (s->merge) {
 
-            square_x = *(projections + SAMPLESW * y + x);
-            square_y = *(projections + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
+                square_x = *(projections + SAMPLESW * y + x);
+                square_y = *(projections + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
+
+                square_x2 = *(projections2 + SAMPLESW * y + x);
+                square_y2 = *(projections2 + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
+
+                if( x <= SAMPLESW / 2 - s->width ) {
+                    *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
+                } 
+
+                if( x > (SAMPLESW / 2 - s->width) && x < (SAMPLESW / 2 + s->width) ) {
+                    merger_x = ( x - (SAMPLESW / 2 - s->width) ) * 100 / (2 * s->width);
+                    // av_log(NULL, AV_LOG_INFO, "\n x %d, SAMPLESW / 2 - s->width: %d, merger_x %d, SAMPLESW %d", x, SAMPLESW / 2 - s->width, merger_x, SAMPLESW);
+
+                    *(frame->data[0] + y * luma_line_width + x) = ( *(original_frame->data[0] + square_y * luma_line_width + square_x) * (100 - merger_x) + *(original_frame->data[0] + square_y2 * luma_line_width + square_x2) * merger_x ) / 100;
+                    // *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
+                }
+
+                if( x >= SAMPLESW / 2 + s->width ) {
+                    *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y2 * luma_line_width + square_x2);
+                } 
+
+
+            } else {
+                square_x = *(projections + SAMPLESW * y + x);
+                square_y = *(projections + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
+                *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
+            }
 
             // square_x = saved_x * luma_line_width / SAMPLESW;
             // square_y = saved_y * original_frame->height / SAMPLESH;
 
             // av_log(NULL, AV_LOG_INFO, "\n -- x:%d, y:%d, px:%d, py:%d", x, y, square_x, square_y );
 
-            *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
 
             if (frame->data[2])
             {
