@@ -103,27 +103,32 @@ static void mapFromFisheyeToSquare(int x, int y, float width, float height, int 
     // Output (spherical) image should have 2:1 aspect.
     // Strange (but helpful) that atan() == atan2(), normally they are different.
 
-    float theta, phi, r, r2;
+    float alpha, beta, rx, ry;
+    float yrad, xrad;
 
     // Polar angles
-    theta = PI * (x / width - 0.5); // -pi/2 to pi/2
-    phi = PI * (y / height - 0.5);  // -pi/2 to pi/2
+    yrad = PI * (y / height - 0.5);  // -pi/2 to pi/2
+    xrad = PI * (x / width - 0.5); // -pi/2 to pi/2
 
     // Vector in 3D space
-    float psph_x = cos(phi) * sin(theta);
-    float psph_y = cos(phi) * cos(theta);
-    float psph_z = sin(phi); //* cos(theta);
+    float psph_x = cos(yrad) * sin(xrad);
+    float psph_y = cos(yrad) * cos(xrad);
+    float psph_z = sin(yrad); //* cos(theta);
 
     // Calculate fisheye angle and radius
-    theta = atan2(psph_z, psph_x);
-    phi = atan2(sqrt(psph_x * psph_x + psph_z * psph_z), psph_y);
+    alpha = atan2(psph_z, psph_x);
+    beta = atan2(sqrt(psph_x * psph_x + psph_z * psph_z), psph_y);
 
-    r = width * phi / PI;
-    r2 = height * phi / PI;
+    rx =  ( width  / 2 ) * ( beta - 0.02 * beta * beta ) / ( PI / 2 );
+    // rx =  ( width  / 2 ) * beta / ( PI / 2 );
+    ry =  ( height / 2 ) * beta / ( PI / 2 );
+
+    // adjustments
+    rx = rx * 100 / 100;
 
     // Pixel in fisheye space
-    *pfish_x = 0.5 * width + r * cos(theta);
-    *pfish_y = 0.5 * height + r2 * sin(theta);
+    *pfish_x = 0.5 * width  +   rx * cos(alpha) - 20; 
+    *pfish_y = 0.5 * height +   ry * sin(alpha);
 }
 
 static void mergePixels(int x, float starting_x, float finishing_x, int merge_width, int *delta_x)
@@ -186,17 +191,20 @@ static int config_props(AVFilterLink *inlink)
 
         int x, y;
         int delta_x;
+        float vertical_delta; 
+        float vertical_multiplier;
 
         for (y = 0; y < SAMPLESH; y++)
         {
             for (x = 0; x < SAMPLESW; x++)
             {
+                vertical_delta = abs( y - SAMPLESH/2 ) * 100000 / (SAMPLESH/2);
                 if (x > (SAMPLESW / 4) && x < (SAMPLESW / 2) + s->width)
                 {
                     // av_log(NULL, AV_LOG_INFO, "\n cleaning!");
-                    
+
                     mergePixels(x, SAMPLESW/4, SAMPLESW/2, s->width, &delta_x);
-                    *(projections                       + SAMPLESW * y + x) = x + delta_x;
+                    *(projections                       + SAMPLESW * y + x) = x + delta_x * (1 + 2* vertical_delta / 100000);
                     *(projections + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
 
                 }
@@ -208,7 +216,7 @@ static int config_props(AVFilterLink *inlink)
 
                 if (x > (SAMPLESW / 2 - s->width) && x < (SAMPLESW * 3 / 4) ) {
                     mergePixels(x, SAMPLESW * 3 / 4, SAMPLESW / 2 - s->width, s->width, &delta_x);
-                    *(projections2                       + SAMPLESW * y + x) = x - delta_x;
+                    *(projections2                       + SAMPLESW * y + x) = x - delta_x * (1 + 2* vertical_delta / 100000);
                     *(projections2 + SAMPLESH * SAMPLESW + SAMPLESW * y + x) = y;
                 } else {
                     *(projections2 + SAMPLESW * y + x) = x;
@@ -286,19 +294,20 @@ static void filter_slice_from_sphere_to_rect(AVFilterContext *ctx, void *arg,
                 square_x2 = *(projections2 + SAMPLESW * y + x);
                 square_y2 = *(projections2 + SAMPLESW * SAMPLESH + SAMPLESW * y + x);
 
-                if( x <= SAMPLESW / 2 - s->width ) {
+                if( x <= SAMPLESW / 2 ) {
                     *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
                 } 
 
-                if( x > (SAMPLESW / 2 - s->width) && x < (SAMPLESW / 2 + s->width) ) {
-                    merger_x = ( x - (SAMPLESW / 2 - s->width) ) * 100 / (2 * s->width);
-                    // av_log(NULL, AV_LOG_INFO, "\n x %d, SAMPLESW / 2 - s->width: %d, merger_x %d, SAMPLESW %d", x, SAMPLESW / 2 - s->width, merger_x, SAMPLESW);
+                // if( x > (SAMPLESW / 2 - s->width) && x < (SAMPLESW / 2 + s->width) ) {
+                //     merger_x = ( x - (SAMPLESW / 2 - s->width) ) * 100 / (2 * s->width);
+                //     // av_log(NULL, AV_LOG_INFO, "\n x %d, SAMPLESW / 2 - s->width: %d, merger_x %d, SAMPLESW %d", x, SAMPLESW / 2 - s->width, merger_x, SAMPLESW);
 
-                    *(frame->data[0] + y * luma_line_width + x) = ( *(original_frame->data[0] + square_y * luma_line_width + square_x) * (100 - merger_x) + *(original_frame->data[0] + square_y2 * luma_line_width + square_x2) * merger_x ) / 100;
-                    // *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
-                }
+                //     *(frame->data[0] + y * luma_line_width + x) = ( *(original_frame->data[0] + square_y * luma_line_width + square_x) * (100 - merger_x) + *(original_frame->data[0] + square_y2 * luma_line_width + square_x2) * merger_x ) / 100;
+                //     *(frame->data[0] + y * luma_line_width + x) = ( *(original_frame->data[0] + square_y * luma_line_width + square_x) * (100 - merger_x) + *(original_frame->data[0] + square_y2 * luma_line_width + square_x2) * merger_x ) / 100;
+                //     // *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y * luma_line_width + square_x);
+                // }
 
-                if( x >= SAMPLESW / 2 + s->width ) {
+                if( x >= SAMPLESW / 2 ) {
                     *(frame->data[0] + y * luma_line_width + x) = *(original_frame->data[0] + square_y2 * luma_line_width + square_x2);
                 } 
 
