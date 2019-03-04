@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build all tutorials",
+            "type": "shell",
+            "command": "make",
+            // "args": [
+            //     "-Wall",
+            //     "-ggdb",
+            //     "-v",
+            //     "-stdlib=libstdc++",
+            //     "-L.",
+            //     "-D_GNU_SOURCE=1","-D_THREAD_SAFE","-I/usr/local/include/SDL","-L/usr/local/lib", "-lSDLmain", "-lSDL", "-Wl,-framework,Cocoa",
+            //     "-I/usr/local/Cellar/ffmpeg/4.1/include","-L/usr/local/Cellar/ffmpeg/4.1/lib","-lavcodec","-lavformat","-lswscale",
+            //     "tutorial01.c"
+            // ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

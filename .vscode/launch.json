@@ -1,0 +1,30 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "(lldb) Tutorial Carlos",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/ffmpeg",
+      "args": [
+          "-y",
+        "-flags2",
+        "+export_mvs",
+        "-i",
+        "../ffmpeg-tutorial/test_inputs/B2.mp4",
+        "-vf",
+        "codecview=mv=bb:mvt=fp",
+        "../ffmpeg-tutorial/test_inputs/B2_v3.mp4"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "preLaunchTask": "build all tutorials",
+      "MIMode": "lldb"
+    }
+  ]
+}
