@@ -1,3 +1,9 @@
+# ./configure --prefix=/usr/local/transform/ffmpeg --enable-gpl --enable-nonfree --enable-libass  --enable-libvpx --enable-libx264 --enable-libxvid --enable-libopencv --extra-libs='-lTransform360 -lstdc++'
+
+# ./configure --disable-optimizations --enable-extra-warnings --disable-stripping --enable-debug=gdb --prefix=/usr/local/transform/ffmpeg --enable-gpl --enable-nonfree --enable-libass  --enable-libvpx --enable-libx264 --enable-libxvid --enable-libopencv --extra-libs='-lTransform360 -lstdc++'
+
+# make ; ./ffmpeg -i ../fix/out_right.mp4 -vf fisheye ../fix/right_fixed2.mp4 -benchmark
+
 MAIN_MAKEFILE=1
 include ffbuild/config.mak
 

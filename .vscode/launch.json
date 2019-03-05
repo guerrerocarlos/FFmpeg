@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "(lldb) Tutorial Carlos",
+      "name": "(lldb) Debug FFmpeg",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/ffmpeg",

@@ -2825,16 +2825,23 @@ static int open_input_file(InputFile *ifile, const char *filename)
     AVDictionaryEntry *t;
     int scan_all_pmts_set = 0;
 
+    printf("[:] -- open_input_file\n");
+
     fmt_ctx = avformat_alloc_context();
+    
     if (!fmt_ctx) {
         print_error(filename, AVERROR(ENOMEM));
         exit_program(1);
     }
 
     if (!av_dict_get(format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
+        printf("[:] -- scan_all_pmts\n");
+
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
         scan_all_pmts_set = 1;
     }
+
+
     if ((err = avformat_open_input(&fmt_ctx, filename,
                                    iformat, &format_opts)) < 0) {
         print_error(filename, err);
@@ -2842,6 +2849,8 @@ static int open_input_file(InputFile *ifile, const char *filename)
     }
     ifile->fmt_ctx = fmt_ctx;
     if (scan_all_pmts_set)
+        printf("[:] -- scan_all_pmts_set\n");
+
         av_dict_set(&format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE);
     if ((t = av_dict_get(format_opts, "", NULL, AV_DICT_IGNORE_SUFFIX))) {
         av_log(NULL, AV_LOG_ERROR, "Option %s not found.\n", t->key);
@@ -2849,6 +2858,8 @@ static int open_input_file(InputFile *ifile, const char *filename)
     }
 
     if (find_stream_info) {
+        printf("[:] -- find_stream_info\n");
+
         AVDictionary **opts = setup_find_stream_info_opts(fmt_ctx, codec_opts);
         int orig_nb_streams = fmt_ctx->nb_streams;
 
@@ -2864,7 +2875,9 @@ static int open_input_file(InputFile *ifile, const char *filename)
         }
     }
 
+    printf("[:] -- av_dump_format\n");
     av_dump_format(fmt_ctx, 0, filename, 0);
+    printf("[_] -- av_dumped_format\n");
 
     ifile->streams = av_mallocz_array(fmt_ctx->nb_streams,
                                       sizeof(*ifile->streams));
@@ -2887,6 +2900,7 @@ static int open_input_file(InputFile *ifile, const char *filename)
             continue;
         }
 
+        printf("[-] -- avcodec_find_decoder %d \n", stream->codecpar->codec_id);
         codec = avcodec_find_decoder(stream->codecpar->codec_id);
         if (!codec) {
             av_log(NULL, AV_LOG_WARNING,
