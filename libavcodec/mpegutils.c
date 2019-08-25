@@ -277,8 +277,8 @@ void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_
             *low_delay = 0; // needed to see the vectors without trashing the buffers
 
         ret = av_pix_fmt_get_chroma_sub_sample (avctx->pix_fmt, &h_chroma_shift, &v_chroma_shift);
-        if (ret)
-            return ret;
+        // if (ret)
+            // return ret;
 
         av_frame_make_writable(pict);
 

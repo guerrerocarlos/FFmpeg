@@ -360,3 +360,5 @@ int av_log_get_flags(void);
  */
 
 #endif /* AVUTIL_LOG_H */
+
+#define DEBUG

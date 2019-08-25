@@ -10,7 +10,11 @@
       "request": "launch",
       "program": "${workspaceFolder}/ffmpeg",
       "args": [
-          "-y",
+        "-debug",
+        "0",
+        "-threads",
+        "1",
+        "-y",
         "-flags2",
         "+export_mvs",
         "-i",
@@ -21,10 +25,12 @@
       ],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
-      "environment": [],
       "externalConsole": false,
       "preLaunchTask": "build all tutorials",
-      "MIMode": "lldb"
+      "MIMode": "lldb",
+      "environment": [
+        { "name": "HAVE_THREADS", "value": "false" }
+      ]
     }
   ]
 }
