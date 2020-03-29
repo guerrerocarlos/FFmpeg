@@ -14,7 +14,7 @@ check_command() {
 }
 
 build() {
-  docker run -it \
+  docker run \
     -v ${PWD}:/src \
     trzeci/emscripten:${EMSCRIPTEN_VERSION} \
     sh -c "sh ./${TARGET}-js.sh"
