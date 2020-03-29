@@ -1,0 +1,13 @@
+on: push
+
+name: Push
+
+jobs:
+  platform:
+    name: 'Build ffmpeg-js'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Clone repo'
+        uses: actions/checkout@v2
+      - name: 'Build with docker'
+        run: ./build-with-docker.sh

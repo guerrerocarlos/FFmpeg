@@ -1,6 +1,6 @@
 #!/bin/bash -x
 
-set -e -o pipefail
+set -e pipefail
 
 configure_ffmpeg() {
   emconfigure ./configure \
