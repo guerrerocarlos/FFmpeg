@@ -4,7 +4,7 @@ name: Push
 
 jobs:
   platform:
-    name: 'Build ffmpeg-js'
+    name: Build ffmpeg-js
     runs-on: ubuntu-latest
     steps:
       - name: 'Clone repo'
